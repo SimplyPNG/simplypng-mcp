@@ -15,6 +15,17 @@ export function getApiConfig(): ApiConfig {
   return { apiKey, baseUrl };
 }
 
+export function extractErrorMessage(err: Record<string, unknown>, statusText: string): string {
+  const errField = err['error'];
+  if (typeof errField === 'string') return errField;
+  if (typeof errField === 'object' && errField !== null) {
+    const nested = errField as Record<string, unknown>;
+    if (typeof nested['message'] === 'string') return nested['message'];
+    if (typeof nested['code'] === 'string') return nested['code'];
+  }
+  return statusText;
+}
+
 export async function apiFetch(
   path: string,
   config: ApiConfig,

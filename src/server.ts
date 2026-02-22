@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiFetch, getApiConfig } from './config.js';
+import { apiFetch, getApiConfig, extractErrorMessage } from './config.js';
 import {
   estimateCreditsInput,
   removeBackgroundInput,
@@ -31,8 +31,7 @@ server.registerTool(
     const res = await apiFetch('/api/v1/credits', config);
     if (!res.ok) {
       const err = await res.json().catch(() => ({})) as Record<string, unknown>;
-      const msg = (err['error'] as Record<string, unknown>)?.['message'] ?? res.statusText;
-      throw new Error(`Failed to fetch credit balance: ${msg}`);
+      throw new Error(`Failed to fetch credit balance: ${extractErrorMessage(err, res.statusText)}`);
     }
     const data = await res.json() as Record<string, unknown>;
     const balance = data['balance'] as Record<string, number> | undefined;
@@ -83,8 +82,7 @@ server.registerTool(
     const res = await apiFetch('/api/v1/jobs', config, { method: 'POST', body: JSON.stringify(body) });
     if (!res.ok) {
       const err = await res.json().catch(() => ({})) as Record<string, unknown>;
-      const msg = (err['error'] as Record<string, unknown>)?.['message'] ?? res.statusText;
-      throw new Error(`Failed to create job: ${msg}`);
+      throw new Error(`Failed to create job: ${extractErrorMessage(err, res.statusText)}`);
     }
     const data = await res.json() as Record<string, unknown>;
 
@@ -121,8 +119,7 @@ server.registerTool(
     const res = await apiFetch('/api/v1/jobs/batch', config, { method: 'POST', body: JSON.stringify(body) });
     if (!res.ok) {
       const err = await res.json().catch(() => ({})) as Record<string, unknown>;
-      const msg = (err['error'] as Record<string, unknown>)?.['message'] ?? res.statusText;
-      throw new Error(`Failed to create batch: ${msg}`);
+      throw new Error(`Failed to create batch: ${extractErrorMessage(err, res.statusText)}`);
     }
     const data = await res.json() as Record<string, unknown>;
 
@@ -151,8 +148,7 @@ server.registerTool(
     const res = await apiFetch(path, config);
     if (!res.ok) {
       const err = await res.json().catch(() => ({})) as Record<string, unknown>;
-      const msg = (err['error'] as Record<string, unknown>)?.['message'] ?? res.statusText;
-      throw new Error(`Failed to get job status: ${msg}`);
+      throw new Error(`Failed to get job status: ${extractErrorMessage(err, res.statusText)}`);
     }
     const data = await res.json() as Record<string, unknown>;
 
@@ -176,8 +172,7 @@ server.registerTool(
     const res = await apiFetch(`/api/v1/jobs/${jobId}?output_mode=download_url`, config);
     if (!res.ok) {
       const err = await res.json().catch(() => ({})) as Record<string, unknown>;
-      const msg = (err['error'] as Record<string, unknown>)?.['message'] ?? res.statusText;
-      throw new Error(`Failed to get download URL: ${msg}`);
+      throw new Error(`Failed to get download URL: ${extractErrorMessage(err, res.statusText)}`);
     }
     const data = await res.json() as Record<string, unknown>;
     const job = data['job'] as Record<string, unknown> | undefined;
