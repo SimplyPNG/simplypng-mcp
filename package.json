@@ -1,0 +1,47 @@
+{
+  "name": "simplypng-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for SimplyPNG background removal APIs",
+  "type": "module",
+  "bin": {
+    "simplypng-mcp": "./build/index.js"
+  },
+  "files": [
+    "build"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "serve": "tsx src/http.ts",
+    "start": "node build/index.js",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "background-removal",
+    "simplypng",
+    "image-processing"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SimplyPNG/simplypng-mcp.git"
+  },
+  "homepage": "https://simplypng.app",
+  "bugs": {
+    "url": "https://github.com/SimplyPNG/simplypng-mcp/issues"
+  }
+}
