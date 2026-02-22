@@ -1,6 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { apiFetch, getApiConfig } from './config.js';
+import {
+  estimateCreditsInput,
+  removeBackgroundInput,
+  batchRemoveBackgroundInput,
+  getJobStatusInput,
+  downloadResultsInput,
+} from './schemas.js';
 
 export const server = new McpServer({
   name: 'simplypng-mcp',
@@ -14,10 +21,7 @@ server.registerTool(
     description:
       'Estimate how many credits are needed and check if your balance is sufficient. ' +
       'Standard mode: 1 credit/image (2500px max). HD mode: 2 credits/image (4096px max).',
-    inputSchema: z.object({
-      imageCount: z.number().int().min(1).max(50).describe('Number of images to process'),
-      hdMode: z.boolean().optional().describe('Use HD mode (4096px, 2 credits/image). Default: false'),
-    }),
+    inputSchema: estimateCreditsInput,
   },
   async ({ imageCount, hdMode }) => {
     const config = getApiConfig();
@@ -59,19 +63,7 @@ server.registerTool(
     description:
       'Remove the background from a single image. Accepts base64-encoded image data or an HTTPS URL. ' +
       'Returns a job ID — poll with get_job_status until succeeded, then call download_results.',
-    inputSchema: z.object({
-      image: z.string().describe('Base64-encoded image OR an https:// URL pointing to the image'),
-      outputMode: z.enum(['download_url', 'base64_json']).optional()
-        .describe('Output format. download_url returns a signed URL; base64_json returns raw base64 data. Default: download_url'),
-      hdMode: z.boolean().optional().describe('Use HD mode (4096px, 2 credits). Default: false (2500px, 1 credit)'),
-      outputType: z.enum(['original', 'centered']).optional()
-        .describe('original: keep original crop. centered: center subject on square canvas. Default: original'),
-      background: z.enum(['transparent', 'white', 'custom']).optional()
-        .describe('Background fill. transparent requires PNG output. Default: transparent'),
-      backgroundColor: z.string().optional().describe('Hex color for custom background, e.g. #FF5733'),
-      outputFormat: z.enum(['png', 'jpg']).optional().describe('Output file format. Default: png'),
-      idempotencyKey: z.string().optional().describe('Optional idempotency key to prevent duplicate jobs'),
-    }),
+    inputSchema: removeBackgroundInput,
   },
   async ({ image, outputMode, hdMode, outputType, background, backgroundColor, outputFormat, idempotencyKey }) => {
     const config = getApiConfig();
@@ -109,21 +101,7 @@ server.registerTool(
     description:
       'Remove backgrounds from multiple images in a single batch (up to 50). ' +
       'Returns a batchId — poll with get_job_status or provide a webhookUrl for completion notification.',
-    inputSchema: z.object({
-      images: z.array(z.object({
-        url: z.string().optional().describe('HTTPS URL of the image'),
-        base64: z.string().optional().describe('Base64-encoded image data'),
-        id: z.string().optional().describe('Your own identifier for this image (returned in results)'),
-      })).min(1).max(50).describe('Array of images to process (max 50)'),
-      webhookUrl: z.string().url().optional()
-        .describe('HTTPS URL to receive a POST callback when the batch completes'),
-      hdMode: z.boolean().optional().describe('Use HD mode for all images (2 credits/image). Default: false'),
-      outputType: z.enum(['original', 'centered']).optional().describe('Output type for all images'),
-      background: z.enum(['transparent', 'white', 'custom']).optional(),
-      backgroundColor: z.string().optional(),
-      outputFormat: z.enum(['png', 'jpg']).optional(),
-      idempotencyKey: z.string().optional().describe('Optional idempotency key to prevent duplicate batches'),
-    }),
+    inputSchema: batchRemoveBackgroundInput,
   },
   async ({ images, webhookUrl, hdMode, outputType, background, backgroundColor, outputFormat, idempotencyKey }) => {
     const config = getApiConfig();
@@ -161,10 +139,7 @@ server.registerTool(
     description:
       'Check the status of a single job or batch. Returns status (pending/processing/succeeded/failed) ' +
       'and result URLs for completed jobs. Poll every 2–5 seconds until status is succeeded or failed.',
-    inputSchema: z.object({
-      jobId: z.string().optional().describe('Single job ID returned by remove_background'),
-      batchId: z.string().optional().describe('Batch ID returned by batch_remove_background'),
-    }),
+    inputSchema: getJobStatusInput,
   },
   async ({ jobId, batchId }) => {
     if (!jobId && !batchId) {
@@ -194,9 +169,7 @@ server.registerTool(
     description:
       'Get the current signed download URL for a completed job. ' +
       'URLs expire after 1 hour — call this tool again if the URL has expired.',
-    inputSchema: z.object({
-      jobId: z.string().describe('Job ID to retrieve download URL for'),
-    }),
+    inputSchema: downloadResultsInput,
   },
   async ({ jobId }) => {
     const config = getApiConfig();
