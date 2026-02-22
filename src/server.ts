@@ -34,8 +34,7 @@ server.registerTool(
       throw new Error(`Failed to fetch credit balance: ${extractErrorMessage(err, res.statusText)}`);
     }
     const data = await res.json() as Record<string, unknown>;
-    const balance = data['balance'] as Record<string, number> | undefined;
-    const available = balance?.['available'] ?? 0;
+    const available = typeof data['balance'] === 'number' ? data['balance'] : 0;
 
     return {
       content: [{

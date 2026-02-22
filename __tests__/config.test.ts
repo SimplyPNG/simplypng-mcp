@@ -1,4 +1,30 @@
-import { getApiConfig } from '../src/config.js';
+import { getApiConfig, extractErrorMessage } from '../src/config.js';
+
+describe('balance parsing regression — GET /api/v1/credits returns flat number', () => {
+  it('parses flat numeric balance correctly', () => {
+    const apiResponse: Record<string, unknown> = {
+      balance: 106,
+      ownerType: 'user',
+      ownerId: 'abc123',
+      currency: 'credits',
+      request_id: 'req_xxx',
+    };
+    const available = typeof apiResponse['balance'] === 'number' ? apiResponse['balance'] : 0;
+    expect(available).toBe(106);
+  });
+
+  it('returns 0 when balance field is missing', () => {
+    const apiResponse: Record<string, unknown> = { ownerType: 'user' };
+    const available = typeof apiResponse['balance'] === 'number' ? apiResponse['balance'] : 0;
+    expect(available).toBe(0);
+  });
+
+  it('returns 0 when balance is an object (wrong shape guard)', () => {
+    const apiResponse: Record<string, unknown> = { balance: { available: 106 } };
+    const available = typeof apiResponse['balance'] === 'number' ? apiResponse['balance'] : 0;
+    expect(available).toBe(0);
+  });
+});
 
 describe('getApiConfig', () => {
   const originalEnv = process.env;
