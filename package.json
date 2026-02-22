@@ -4,7 +4,7 @@
   "description": "MCP server for SimplyPNG background removal APIs",
   "type": "module",
   "bin": {
-    "simplypng-mcp": "./build/index.js"
+    "simplypng-mcp": "build/index.js"
   },
   "files": [
     "build"
