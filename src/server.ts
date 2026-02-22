@@ -60,7 +60,10 @@ server.registerTool(
     title: 'Remove Background',
     description:
       'Remove the background from a single image. Accepts base64-encoded image data or an HTTPS URL. ' +
-      'Returns a job ID — poll with get_job_status until succeeded, then call download_results.',
+      'Returns a job ID — poll with get_job_status until succeeded, then call download_results. ' +
+      'Credit cost: 1 credit (Fast mode, default) or 2 credits (HD mode). ' +
+      'IMPORTANT: Do NOT use hdMode unless the user explicitly requests HD/high-definition output OR the image is known to exceed 2500px. ' +
+      'HD mode provides zero benefit for images ≤ 2500px and wastes 1 credit.',
     inputSchema: removeBackgroundInput,
   },
   async ({ image, outputMode, hdMode, outputType, background, backgroundColor, outputFormat, idempotencyKey }) => {
@@ -97,7 +100,9 @@ server.registerTool(
     title: 'Batch Remove Background',
     description:
       'Remove backgrounds from multiple images in a single batch (up to 50). ' +
-      'Returns a batchId — poll with get_job_status or provide a webhookUrl for completion notification.',
+      'Returns a batchId — poll with get_job_status or provide a webhookUrl for completion notification. ' +
+      'Credit cost: 1 credit/image (Fast mode, default) or 2 credits/image (HD mode). ' +
+      'IMPORTANT: Do NOT use hdMode unless the user explicitly requests HD/high-definition OR images are known to exceed 2500px.',
     inputSchema: batchRemoveBackgroundInput,
   },
   async ({ images, webhookUrl, hdMode, outputType, background, backgroundColor, outputFormat, idempotencyKey }) => {
