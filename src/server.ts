@@ -1,19 +1,27 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiFetch, getApiConfig } from './config.js';
+import { apiFetch, getApiConfig, extractErrorMessage } from './config.js';
+import {
+  estimateCreditsInput,
+  removeBackgroundInput,
+  batchRemoveBackgroundInput,
+  getJobStatusInput,
+  downloadResultsInput,
+} from './schemas.js';
 
 export const server = new McpServer({
   name: 'simplypng-mcp',
   version: '0.1.0',
 });
 
-server.tool(
+server.registerTool(
   'estimate_credits',
-  'Estimate how many credits are needed and check if your balance is sufficient. ' +
-  'Standard mode: 1 credit/image (2500px max). HD mode: 2 credits/image (4096px max).',
   {
-    imageCount: z.number().int().min(1).max(50).describe('Number of images to process'),
-    hdMode: z.boolean().optional().describe('Use HD mode (4096px, 2 credits/image). Default: false'),
+    title: 'Estimate Credits',
+    description:
+      'Estimate how many credits are needed and check if your balance is sufficient. ' +
+      'Standard mode: 1 credit/image (2500px max). HD mode: 2 credits/image (4096px max).',
+    inputSchema: estimateCreditsInput,
   },
   async ({ imageCount, hdMode }) => {
     const config = getApiConfig();
@@ -23,12 +31,10 @@ server.tool(
     const res = await apiFetch('/api/v1/credits', config);
     if (!res.ok) {
       const err = await res.json().catch(() => ({})) as Record<string, unknown>;
-      const msg = (err['error'] as Record<string, unknown>)?.['message'] ?? res.statusText;
-      throw new Error(`Failed to fetch credit balance: ${msg}`);
+      throw new Error(`Failed to fetch credit balance: ${extractErrorMessage(err, res.statusText)}`);
     }
     const data = await res.json() as Record<string, unknown>;
-    const balance = data['balance'] as Record<string, number> | undefined;
-    const available = balance?.['available'] ?? 0;
+    const available = typeof data['balance'] === 'number' ? data['balance'] : 0;
 
     return {
       content: [{
@@ -48,22 +54,17 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   'remove_background',
-  'Remove the background from a single image. Accepts base64-encoded image data or an HTTPS URL. ' +
-  'Returns a signed download URL (expires in 1 hour) or base64 result.',
   {
-    image: z.string().describe('Base64-encoded image OR an https:// URL pointing to the image'),
-    outputMode: z.enum(['download_url', 'base64_json']).optional()
-      .describe('Output format. download_url returns a signed URL; base64_json returns raw base64 data. Default: download_url'),
-    hdMode: z.boolean().optional().describe('Use HD mode (4096px, 2 credits). Default: false (2500px, 1 credit)'),
-    outputType: z.enum(['original', 'centered']).optional()
-      .describe('original: keep original crop. centered: center subject on square canvas. Default: original'),
-    background: z.enum(['transparent', 'white', 'custom']).optional()
-      .describe('Background fill. transparent requires PNG output. Default: transparent'),
-    backgroundColor: z.string().optional().describe('Hex color for custom background, e.g. #FF5733'),
-    outputFormat: z.enum(['png', 'jpg']).optional().describe('Output file format. Default: png'),
-    idempotencyKey: z.string().optional().describe('Optional idempotency key to prevent duplicate jobs'),
+    title: 'Remove Background',
+    description:
+      'Remove the background from a single image. Accepts base64-encoded image data or an HTTPS URL. ' +
+      'Returns a job ID — poll with get_job_status until succeeded, then call download_results. ' +
+      'Credit cost: 1 credit (Fast mode, default) or 2 credits (HD mode). ' +
+      'IMPORTANT: Do NOT use hdMode unless the user explicitly requests HD/high-definition output OR the image is known to exceed 2500px. ' +
+      'HD mode provides zero benefit for images ≤ 2500px and wastes 1 credit.',
+    inputSchema: removeBackgroundInput,
   },
   async ({ image, outputMode, hdMode, outputType, background, backgroundColor, outputFormat, idempotencyKey }) => {
     const config = getApiConfig();
@@ -83,8 +84,7 @@ server.tool(
     const res = await apiFetch('/api/v1/jobs', config, { method: 'POST', body: JSON.stringify(body) });
     if (!res.ok) {
       const err = await res.json().catch(() => ({})) as Record<string, unknown>;
-      const msg = (err['error'] as Record<string, unknown>)?.['message'] ?? res.statusText;
-      throw new Error(`Failed to create job: ${msg}`);
+      throw new Error(`Failed to create job: ${extractErrorMessage(err, res.statusText)}`);
     }
     const data = await res.json() as Record<string, unknown>;
 
@@ -94,24 +94,16 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   'batch_remove_background',
-  'Remove backgrounds from multiple images in a single batch (up to 50). ' +
-  'Provide a webhook URL to be notified when the batch completes, or poll with get_job_status.',
   {
-    images: z.array(z.object({
-      url: z.string().optional().describe('HTTPS URL of the image'),
-      base64: z.string().optional().describe('Base64-encoded image data'),
-      id: z.string().optional().describe('Your own identifier for this image (returned in results)'),
-    })).min(1).max(50).describe('Array of images to process (max 50)'),
-    webhookUrl: z.string().url().optional()
-      .describe('HTTPS URL to receive a POST callback when the batch completes'),
-    hdMode: z.boolean().optional().describe('Use HD mode for all images (2 credits/image). Default: false'),
-    outputType: z.enum(['original', 'centered']).optional().describe('Output type for all images'),
-    background: z.enum(['transparent', 'white', 'custom']).optional(),
-    backgroundColor: z.string().optional(),
-    outputFormat: z.enum(['png', 'jpg']).optional(),
-    idempotencyKey: z.string().optional().describe('Optional idempotency key to prevent duplicate batches'),
+    title: 'Batch Remove Background',
+    description:
+      'Remove backgrounds from multiple images in a single batch (up to 50). ' +
+      'Returns a batchId — poll with get_job_status or provide a webhookUrl for completion notification. ' +
+      'Credit cost: 1 credit/image (Fast mode, default) or 2 credits/image (HD mode). ' +
+      'IMPORTANT: Do NOT use hdMode unless the user explicitly requests HD/high-definition OR images are known to exceed 2500px.',
+    inputSchema: batchRemoveBackgroundInput,
   },
   async ({ images, webhookUrl, hdMode, outputType, background, backgroundColor, outputFormat, idempotencyKey }) => {
     const config = getApiConfig();
@@ -131,8 +123,7 @@ server.tool(
     const res = await apiFetch('/api/v1/jobs/batch', config, { method: 'POST', body: JSON.stringify(body) });
     if (!res.ok) {
       const err = await res.json().catch(() => ({})) as Record<string, unknown>;
-      const msg = (err['error'] as Record<string, unknown>)?.['message'] ?? res.statusText;
-      throw new Error(`Failed to create batch: ${msg}`);
+      throw new Error(`Failed to create batch: ${extractErrorMessage(err, res.statusText)}`);
     }
     const data = await res.json() as Record<string, unknown>;
 
@@ -142,13 +133,14 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   'get_job_status',
-  'Check the status of a single job or batch. Returns status (pending/processing/succeeded/failed) ' +
-  'and result URLs for completed jobs.',
   {
-    jobId: z.string().optional().describe('Single job ID returned by remove_background'),
-    batchId: z.string().optional().describe('Batch ID returned by batch_remove_background'),
+    title: 'Get Job Status',
+    description:
+      'Check the status of a single job or batch. Returns status (pending/processing/succeeded/failed) ' +
+      'and result URLs for completed jobs. Poll every 2–5 seconds until status is succeeded or failed.',
+    inputSchema: getJobStatusInput,
   },
   async ({ jobId, batchId }) => {
     if (!jobId && !batchId) {
@@ -160,8 +152,7 @@ server.tool(
     const res = await apiFetch(path, config);
     if (!res.ok) {
       const err = await res.json().catch(() => ({})) as Record<string, unknown>;
-      const msg = (err['error'] as Record<string, unknown>)?.['message'] ?? res.statusText;
-      throw new Error(`Failed to get job status: ${msg}`);
+      throw new Error(`Failed to get job status: ${extractErrorMessage(err, res.statusText)}`);
     }
     const data = await res.json() as Record<string, unknown>;
 
@@ -171,20 +162,21 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   'download_results',
-  'Get the current signed download URL for a completed job. ' +
-  'URLs expire after 1 hour — call this tool again if the URL has expired.',
   {
-    jobId: z.string().describe('Job ID to retrieve download URL for'),
+    title: 'Download Results',
+    description:
+      'Get the current signed download URL for a completed job. ' +
+      'URLs expire after 1 hour — call this tool again if the URL has expired.',
+    inputSchema: downloadResultsInput,
   },
   async ({ jobId }) => {
     const config = getApiConfig();
     const res = await apiFetch(`/api/v1/jobs/${jobId}?output_mode=download_url`, config);
     if (!res.ok) {
       const err = await res.json().catch(() => ({})) as Record<string, unknown>;
-      const msg = (err['error'] as Record<string, unknown>)?.['message'] ?? res.statusText;
-      throw new Error(`Failed to get download URL: ${msg}`);
+      throw new Error(`Failed to get download URL: ${extractErrorMessage(err, res.statusText)}`);
     }
     const data = await res.json() as Record<string, unknown>;
     const job = data['job'] as Record<string, unknown> | undefined;
@@ -203,4 +195,298 @@ server.tool(
       }, null, 2) }],
     };
   }
+);
+
+// ─── Resources (Presets) ──────────────────────────────────────────────────────
+
+server.registerResource(
+  'amazon-main-image',
+  'presets://marketplace/amazon-main-image',
+  {
+    title: 'Amazon Main Image Preset',
+    description:
+      'SimplyPNG options for Amazon main product images. ' +
+      'Amazon requires pure white background (RGB 255,255,255), product centered and filling ≥85% of frame, ' +
+      'minimum 1000px (2000px+ recommended). Source: sellercentral.amazon.com/help/hub/reference/G1881',
+    mimeType: 'application/json',
+  },
+  async (uri) => ({
+    contents: [{
+      uri: uri.href,
+      text: JSON.stringify({
+        name: 'Amazon Main Image',
+        options: {
+          output_type: 'centered',
+          background: 'white',
+          background_color: '#FFFFFF',
+          canvas_size_preset: 'standard',
+          output_format: 'jpg',
+          jpeg_quality: 90,
+        },
+        credits_per_image: 1,
+        notes: 'Amazon requires pure white (#FFFFFF) background. Product must fill ≥85% of image frame.',
+      }, null, 2),
+    }],
+  })
+);
+
+server.registerResource(
+  'shopify-thumbnail',
+  'presets://marketplace/shopify-thumbnail',
+  {
+    title: 'Shopify Product Thumbnail Preset',
+    description:
+      'SimplyPNG options for Shopify product images. ' +
+      'Shopify recommends 2048×2048px square images; PNG format for best quality. ' +
+      'Source: help.shopify.com/en/manual/products/product-media/product-media-types',
+    mimeType: 'application/json',
+  },
+  async (uri) => ({
+    contents: [{
+      uri: uri.href,
+      text: JSON.stringify({
+        name: 'Shopify Product Thumbnail',
+        options: {
+          output_type: 'centered',
+          background: 'white',
+          background_color: '#FFFFFF',
+          canvas_size_preset: 'standard',
+          output_format: 'png',
+        },
+        credits_per_image: 1,
+        notes: 'Shopify recommends square images. PNG format recommended by Shopify for product images.',
+      }, null, 2),
+    }],
+  })
+);
+
+server.registerResource(
+  'etsy-listing',
+  'presets://marketplace/etsy-listing',
+  {
+    title: 'Etsy Listing Image Preset',
+    description:
+      'SimplyPNG options for Etsy listing images. ' +
+      'Etsy recommends square images ≥2000px to display well in search results and on listing pages. ' +
+      'Source: help.etsy.com/hc/en-us/articles/115015663347',
+    mimeType: 'application/json',
+  },
+  async (uri) => ({
+    contents: [{
+      uri: uri.href,
+      text: JSON.stringify({
+        name: 'Etsy Listing Image',
+        options: {
+          output_type: 'centered',
+          background: 'white',
+          background_color: '#FFFFFF',
+          canvas_size_preset: 'standard',
+          output_format: 'png',
+        },
+        credits_per_image: 1,
+        notes: 'Etsy listing images should be square with enough border to allow thumbnail cropping.',
+      }, null, 2),
+    }],
+  })
+);
+
+server.registerResource(
+  'mode-fast',
+  'presets://mode/fast',
+  {
+    title: 'Fast Mode Preset',
+    description:
+      'Standard processing: input resized to 2500px max before background removal. ' +
+      '1 credit per image. Best for most use cases.',
+    mimeType: 'application/json',
+  },
+  async (uri) => ({
+    contents: [{
+      uri: uri.href,
+      text: JSON.stringify({
+        name: 'Fast Mode',
+        options: { hd_mode: false },
+        credits_per_image: 1,
+        max_input_dimension: 2500,
+        notes: 'Input images are resized to 2500px before processing. Faster and cheaper than HD.',
+      }, null, 2),
+    }],
+  })
+);
+
+server.registerResource(
+  'mode-hd',
+  'presets://mode/hd',
+  {
+    title: 'HD Mode Preset',
+    description:
+      'High-definition processing: input preserved up to 4096px. ' +
+      '2 credits per image. Best for large products or when fine edge detail matters.',
+    mimeType: 'application/json',
+  },
+  async (uri) => ({
+    contents: [{
+      uri: uri.href,
+      text: JSON.stringify({
+        name: 'HD Mode',
+        options: { hd_mode: true },
+        credits_per_image: 2,
+        max_input_dimension: 4096,
+        notes: 'Input images preserved up to 4096px. Use when fine detail or large canvas output is required.',
+      }, null, 2),
+    }],
+  })
+);
+
+// ─── Workflow Prompts ─────────────────────────────────────────────────────────
+
+server.registerPrompt(
+  'amazon-main-image-pipeline',
+  {
+    title: 'Amazon Main Image Pipeline',
+    description:
+      'Full workflow to process a product image for Amazon: credit check → background removal with ' +
+      'Amazon-compliant settings (white background, centered, 2000×2000, JPG) → poll for completion → download URL.',
+    argsSchema: {
+      imageUrl: z.string().url().describe('HTTPS URL of the product image to process'),
+      imageCount: z.number().int().min(1).optional()
+        .describe('Number of images to estimate credits for (default: 1)'),
+    },
+  },
+  ({ imageUrl, imageCount }) => ({
+    messages: [{
+      role: 'user' as const,
+      content: {
+        type: 'text' as const,
+        text: `Process this product image for Amazon using the following workflow:
+
+Image URL: ${imageUrl}
+
+Step 1 — Credit check:
+Call estimate_credits with imageCount=${imageCount ?? 1} and hdMode=false.
+If canAfford is false, stop and tell the user they need more credits.
+
+Step 2 — Remove background:
+Call remove_background with:
+- image: "${imageUrl}"
+- outputMode: "download_url"
+- outputType: "centered"
+- background: "white"
+- backgroundColor: "#FFFFFF"
+- outputFormat: "jpg"
+
+Amazon requires pure white background (RGB 255,255,255) and the product must fill at least 85% of the frame.
+
+Step 3 — Poll for completion:
+Call get_job_status with the jobId from Step 2.
+Repeat every 3 seconds until status is "succeeded" or "failed".
+If "failed", report the error to the user.
+
+Step 4 — Get download URL:
+Call download_results with the jobId.
+Return the downloadUrl and expiresAt to the user.`,
+      },
+    }],
+  })
+);
+
+server.registerPrompt(
+  'shopify-bulk-listing',
+  {
+    title: 'Shopify Bulk Listing Pipeline',
+    description:
+      'Bulk workflow to process multiple product images for Shopify: credit check → batch background ' +
+      'removal (white background, centered, 2000×2000, PNG) → poll for batch completion → download URLs.',
+    argsSchema: {
+      imageUrls: z.array(z.string().url()).min(1).max(50)
+        .describe('Array of HTTPS image URLs to process (max 50)'),
+      webhookUrl: z.string().url().optional()
+        .describe('Optional HTTPS URL to receive a POST callback when the batch completes'),
+    },
+  },
+  ({ imageUrls, webhookUrl }) => ({
+    messages: [{
+      role: 'user' as const,
+      content: {
+        type: 'text' as const,
+        text: `Process ${imageUrls.length} product image(s) for Shopify using the following workflow:
+
+Image URLs:
+${imageUrls.map((url: string, i: number) => `${i + 1}. ${url}`).join('\n')}
+${webhookUrl ? `\nWebhook URL: ${webhookUrl}` : ''}
+
+Step 1 — Credit check:
+Call estimate_credits with imageCount=${imageUrls.length} and hdMode=false.
+If canAfford is false, stop and tell the user they need more credits.
+
+Step 2 — Submit batch:
+Call batch_remove_background with:
+- images: array of { url } objects for each image URL
+- outputType: "centered"
+- background: "white"
+- backgroundColor: "#FFFFFF"
+- outputFormat: "png"
+${webhookUrl ? `- webhookUrl: "${webhookUrl}"` : ''}
+
+Shopify recommends 2048×2048px square images. PNG format is preferred.
+
+Step 3 — Poll for batch completion:
+Call get_job_status with the batchId from Step 2.
+Repeat every 5 seconds until status is "completed" or "failed".
+Report progress to the user (e.g. "7/10 images done").
+
+Step 4 — Collect results:
+For each succeeded job in the batch response, extract the download URLs.
+Return all download URLs to the user as a list.`,
+      },
+    }],
+  })
+);
+
+server.registerPrompt(
+  'etsy-listing-pipeline',
+  {
+    title: 'Etsy Listing Pipeline',
+    description:
+      'Full workflow to process a product image for Etsy: credit check → background removal with ' +
+      'Etsy-recommended settings (white background, centered, 2000×2000, PNG) → poll for completion → download URL.',
+    argsSchema: {
+      imageUrl: z.string().url().describe('HTTPS URL of the product image to process'),
+    },
+  },
+  ({ imageUrl }) => ({
+    messages: [{
+      role: 'user' as const,
+      content: {
+        type: 'text' as const,
+        text: `Process this product image for Etsy using the following workflow:
+
+Image URL: ${imageUrl}
+
+Step 1 — Credit check:
+Call estimate_credits with imageCount=1 and hdMode=false.
+If canAfford is false, stop and tell the user they need more credits.
+
+Step 2 — Remove background:
+Call remove_background with:
+- image: "${imageUrl}"
+- outputMode: "download_url"
+- outputType: "centered"
+- background: "white"
+- backgroundColor: "#FFFFFF"
+- outputFormat: "png"
+
+Etsy recommends square images of at least 2000px with enough border for thumbnail cropping.
+
+Step 3 — Poll for completion:
+Call get_job_status with the jobId from Step 2.
+Repeat every 3 seconds until status is "succeeded" or "failed".
+If "failed", report the error to the user.
+
+Step 4 — Get download URL:
+Call download_results with the jobId.
+Return the downloadUrl and expiresAt to the user.`,
+      },
+    }],
+  })
 );
