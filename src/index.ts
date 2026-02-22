@@ -1,4 +1,7 @@
-import 'dotenv/config';
+import { config as dotenvConfig } from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+dotenvConfig({ path: resolve(dirname(fileURLToPath(import.meta.url)), '..', '.env') });
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { server } from './server.js';
 
