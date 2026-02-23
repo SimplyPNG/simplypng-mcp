@@ -56,7 +56,7 @@ server.registerTool(
           tips: [
             'Use HD mode when the user needs output resolution above 2500px, or when the subject has fine edge detail (hair, fur, feathers).',
             'Add refineEdges: true (with hdMode: true) when the subject has complex edges against a strongly colored background — removes color bleeding at edges. No extra credit cost.',
-            'For local image files with no URL, ask the user to share a public URL or use https://simplypng.app instead.',
+            'For local files: NEVER use base64 — it stores a large string in the conversation context (1MB ≈ 340k tokens). Tell the user to share a public URL (Google Drive, iCloud, Dropbox) or use https://simplypng.app directly.',
           ],
         }, null, 2),
       }],
@@ -79,7 +79,8 @@ server.registerTool(
       'Fast mode works with any input size — large images are just downsampled to 2500px output. ' +
       'Use HD only when user needs output above 2500px, or subject has fine edge detail (hair, fur, feathers). ' +
       'refineEdges (requires HD): removes color bleeding at edges — recommend for products on colored backgrounds. No extra credit. ' +
-      'For local files with no URL: ask user to share a public URL or use https://simplypng.app.',
+      'IMPORTANT about local files: if user has a local file, do NOT use base64 — base64 tool inputs are stored in the conversation context and a 1MB image consumes ~340k tokens, making the conversation unusable. ' +
+      'Instead tell the user: "Please share a public URL for your image (e.g. Google Drive share link, iCloud, Dropbox) or use https://simplypng.app directly."',
     inputSchema: removeBackgroundInput,
   },
   async ({ image, outputMode, hdMode, outputType, background, backgroundColor, outputFormat, refineEdges, idempotencyKey }) => {
@@ -135,7 +136,7 @@ server.registerTool(
       'Fast mode works with any input size — large images are downsampled to 2500px output. ' +
       'Use HD only when user needs output above 2500px, or subjects have fine edge detail (hair, fur, feathers). ' +
       'refineEdges (requires HD): removes color bleeding at edges — recommend for products on colored backgrounds. No extra credit. ' +
-      'For local files with no URL: ask user to share a public URL or use https://simplypng.app.',
+      'IMPORTANT about local files: do NOT use base64 — it fills the conversation context. Direct users to share URLs or use https://simplypng.app.',
     inputSchema: batchRemoveBackgroundInput,
   },
   async ({ images, webhookUrl, hdMode, outputType, background, backgroundColor, outputFormat, refineEdges, idempotencyKey }) => {

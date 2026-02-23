@@ -15,11 +15,14 @@ export const estimateCreditsInput = z.object({
 
 export const removeBackgroundInput = z.object({
   image: z.string().describe(
-    'HTTPS URL of the image (recommended) OR base64-encoded image data. '
-    + 'URL: any publicly accessible https:// link — no size limit. '
-    + 'Base64: data:image/png;base64,... or raw base64 string — server-side limit: 4MB per image. '
-    + 'If the user has a local file and no URL: ask them to share a public URL or use the SimplyPNG web app at https://simplypng.app. '
-    + 'Supported formats: JPEG, PNG, WebP, HEIC/HEIF.'
+    'HTTPS URL of the image — STRONGLY PREFERRED. Use a URL whenever possible. '
+    + 'CRITICAL WARNING about base64: MCP tool inputs are stored in the conversation context. '
+    + 'A 1MB image as base64 consumes ~340,000 conversation tokens, quickly making the conversation unusable. '
+    + 'Only use base64 for very small images (under 50KB original file size). '
+    + 'For local files: tell the user to share a public HTTPS URL (e.g. upload to Google Drive and copy share link, '
+    + 'iCloud shared link, Dropbox, or any image hosting). '
+    + 'If they have no URL option, direct them to https://simplypng.app instead. '
+    + 'Supported URL or base64 formats: JPEG, PNG, WebP, HEIC/HEIF. Base64 server-side size limit: 4MB.'
   ),
   outputMode: z.enum(['download_url', 'base64_json']).optional()
     .describe('Output format. download_url returns a signed URL; base64_json returns raw base64 data. Default: download_url'),
@@ -49,7 +52,11 @@ export const removeBackgroundInput = z.object({
 export const batchRemoveBackgroundInput = z.object({
   images: z.array(z.object({
     url: z.string().optional().describe('HTTPS URL of the image (recommended for files > 1MB)'),
-    base64: z.string().optional().describe('Base64-encoded image data — server-side limit: 4MB decoded per image. For larger files use url instead.'),
+    base64: z.string().optional().describe(
+      'Base64-encoded image data. WARNING: base64 inputs are stored in the conversation context '
+      + 'and consume large amounts of tokens (1MB image ≈ 340k tokens). '
+      + 'Only use for very small images (<50KB). For larger files always use url instead.'
+    ),
     id: z.string().optional().describe('Your own identifier for this image (returned in results)'),
   })).min(1).max(50).describe('Array of images to process (max 50)'),
   webhookUrl: z.string().url().optional()
