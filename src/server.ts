@@ -11,7 +11,7 @@ import {
 
 export const server = new McpServer({
   name: 'simplypng-mcp',
-  version: '0.1.0',
+  version: '0.1.1',
 });
 
 server.registerTool(
@@ -19,8 +19,11 @@ server.registerTool(
   {
     title: 'Estimate Credits',
     description:
-      'Estimate how many credits are needed and check if your balance is sufficient. ' +
-      'Standard mode: 1 credit/image (2500px max). HD mode: 2 credits/image (4096px max).',
+      'Estimate credit cost and check balance. ' +
+      'Standard mode: 1 credit/image (2500px max). HD mode: 2 credits/image (4096px max). ' +
+      'REQUIRED: Call this before EVERY remove_background or batch_remove_background call. ' +
+      'After calling, show the user: estimated cost, current balance, and whether they can afford it. ' +
+      'Then ask: "This will use X credit(s) (balance: Y). Proceed?" — only call the processing tool after the user confirms.',
     inputSchema: estimateCreditsInput,
   },
   async ({ imageCount, hdMode }) => {
@@ -59,11 +62,15 @@ server.registerTool(
   {
     title: 'Remove Background',
     description:
-      'Remove the background from a single image. Accepts base64-encoded image data or an HTTPS URL. ' +
-      'Returns a job ID — poll with get_job_status until succeeded, then call download_results. ' +
+      'Remove the background from a single image. ' +
+      'MANDATORY WORKFLOW — follow these steps in order: ' +
+      '(1) Call estimate_credits first (imageCount=1). Show user the cost + balance. Ask for confirmation. ' +
+      '(2) Only call this tool AFTER the user confirms. ' +
+      '(3) After this returns a jobId, poll get_job_status every 3 seconds until status is "succeeded". ' +
+      '(4) Call download_results to get the final download URL. ' +
       'Credit cost: 1 credit (Fast mode, default) or 2 credits (HD mode). ' +
-      'IMPORTANT: Do NOT use hdMode unless the user explicitly requests HD/high-definition output OR the image is known to exceed 2500px. ' +
-      'HD mode provides zero benefit for images ≤ 2500px and wastes 1 credit.',
+      'IMPORTANT: Do NOT use hdMode unless user explicitly requests HD/high-definition OR image is known to exceed 2500px. ' +
+      'For local files with no URL: ask user to upload to a URL first (e.g. Imgur, S3) or use https://simplypng.app.',
     inputSchema: removeBackgroundInput,
   },
   async ({ image, outputMode, hdMode, outputType, background, backgroundColor, outputFormat, idempotencyKey }) => {
@@ -87,9 +94,19 @@ server.registerTool(
       throw new Error(`Failed to create job: ${extractErrorMessage(err, res.statusText)}`);
     }
     const data = await res.json() as Record<string, unknown>;
+    const job = data['job'] as Record<string, unknown> | undefined;
+    const creditCost = hdMode ? 2 : 1;
 
     return {
-      content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
+      content: [{ type: 'text', text: JSON.stringify({
+        jobId: job?.['id'],
+        status: job?.['status'],
+        creditCost,
+        outputMode: job?.['output_mode'],
+        createdAt: job?.['created_at'],
+        nextStep: `Poll get_job_status with jobId "${job?.['id']}" every 3 seconds until status is "succeeded", then call download_results.`,
+        ...(data['warnings'] ? { warnings: data['warnings'] } : {}),
+      }, null, 2) }],
     };
   }
 );
@@ -100,9 +117,13 @@ server.registerTool(
     title: 'Batch Remove Background',
     description:
       'Remove backgrounds from multiple images in a single batch (up to 50). ' +
-      'Returns a batchId — poll with get_job_status or provide a webhookUrl for completion notification. ' +
+      'MANDATORY WORKFLOW — follow these steps in order: ' +
+      '(1) Call estimate_credits first (imageCount = number of images). Show user total cost + balance. Ask for confirmation. ' +
+      '(2) Only call this tool AFTER the user confirms. ' +
+      '(3) After this returns a batchId, poll get_job_status every 5 seconds until all images complete. ' +
       'Credit cost: 1 credit/image (Fast mode, default) or 2 credits/image (HD mode). ' +
-      'IMPORTANT: Do NOT use hdMode unless the user explicitly requests HD/high-definition OR images are known to exceed 2500px.',
+      'IMPORTANT: Do NOT use hdMode unless user explicitly requests HD/high-definition OR images are known to exceed 2500px. ' +
+      'For local files with no URL: ask user to upload to a URL first or use https://simplypng.app.',
     inputSchema: batchRemoveBackgroundInput,
   },
   async ({ images, webhookUrl, hdMode, outputType, background, backgroundColor, outputFormat, idempotencyKey }) => {
@@ -126,9 +147,19 @@ server.registerTool(
       throw new Error(`Failed to create batch: ${extractErrorMessage(err, res.statusText)}`);
     }
     const data = await res.json() as Record<string, unknown>;
+    const batch = data['batch'] as Record<string, unknown> | undefined;
+    const imageCount = images.length;
+    const creditCost = imageCount * (hdMode ? 2 : 1);
 
     return {
-      content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
+      content: [{ type: 'text', text: JSON.stringify({
+        batchId: batch?.['id'] ?? (data['batchId'] ?? data['id']),
+        status: batch?.['status'] ?? data['status'],
+        imageCount,
+        creditCost,
+        nextStep: `Poll get_job_status with batchId every 5 seconds until all ${imageCount} image(s) complete.`,
+        ...(data['warnings'] ? { warnings: data['warnings'] } : {}),
+      }, null, 2) }],
     };
   }
 );

@@ -6,7 +6,13 @@ export const estimateCreditsInput = z.object({
 });
 
 export const removeBackgroundInput = z.object({
-  image: z.string().describe('Base64-encoded image OR an https:// URL pointing to the image'),
+  image: z.string().describe(
+    'HTTPS URL of the image (recommended) OR base64-encoded image data. '
+    + 'URL: any publicly accessible https:// link. '
+    + 'Base64: data:image/png;base64,... or raw base64 string — MAXIMUM 4MB decoded size (Vercel hard limit). '
+    + 'If the user has a local file and no URL: ask them to upload it somewhere (e.g. Imgur, S3) or use the SimplyPNG web app at https://simplypng.app. '
+    + 'Supported formats: JPEG, PNG, WebP, HEIC/HEIF.'
+  ),
   outputMode: z.enum(['download_url', 'base64_json']).optional()
     .describe('Output format. download_url returns a signed URL; base64_json returns raw base64 data. Default: download_url'),
   hdMode: z.boolean().optional().describe('Use HD mode (4096px max, 2 credits) instead of Fast mode (2500px max, 1 credit). ONLY set true when user explicitly requests HD/high-definition OR when the image is known to be larger than 2500px. For images ≤ 2500px, HD mode wastes 1 extra credit with zero quality benefit. Default: false.'),
@@ -21,8 +27,8 @@ export const removeBackgroundInput = z.object({
 
 export const batchRemoveBackgroundInput = z.object({
   images: z.array(z.object({
-    url: z.string().optional().describe('HTTPS URL of the image'),
-    base64: z.string().optional().describe('Base64-encoded image data'),
+    url: z.string().optional().describe('HTTPS URL of the image (recommended for files > 1MB)'),
+    base64: z.string().optional().describe('Base64-encoded image data — MAXIMUM 4MB decoded per image (Vercel hard limit). For larger files use url instead.'),
     id: z.string().optional().describe('Your own identifier for this image (returned in results)'),
   })).min(1).max(50).describe('Array of images to process (max 50)'),
   webhookUrl: z.string().url().optional()
