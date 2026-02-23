@@ -1,6 +1,6 @@
 {
   "name": "simplypng-mcp",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "MCP server for SimplyPNG background removal APIs",
   "type": "module",
   "bin": {
