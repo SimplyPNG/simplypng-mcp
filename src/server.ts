@@ -11,7 +11,7 @@ import {
 
 export const server = new McpServer({
   name: 'simplypng-mcp',
-  version: '0.1.1',
+  version: '0.1.3',
 });
 
 server.registerTool(
@@ -20,10 +20,12 @@ server.registerTool(
     title: 'Estimate Credits',
     description:
       'Estimate credit cost and check balance. ' +
-      'Standard mode: 1 credit/image (2500px max). HD mode: 2 credits/image (4096px max). ' +
+      'Fast mode (default): 1 credit/image — input resized to 2500px, output up to 2500px. Works with any input size. ' +
+      'HD mode: 2 credits/image — input preserved up to 4096px, output up to 4096px. ' +
       'REQUIRED: Call this before EVERY remove_background or batch_remove_background call. ' +
-      'After calling, show the user: estimated cost, current balance, and whether they can afford it. ' +
-      'Then ask: "This will use X credit(s) (balance: Y). Proceed?" — only call the processing tool after the user confirms.',
+      'After calling, present the result to the user and ask: "This will use X credit(s) (you have Y). Proceed?" ' +
+      'Only call the processing tool AFTER the user confirms. ' +
+      'If canAfford is false, tell the user they need more credits before proceeding.',
     inputSchema: estimateCreditsInput,
   },
   async ({ imageCount, hdMode }) => {
@@ -49,8 +51,13 @@ server.registerTool(
           breakdown: {
             imageCount,
             creditsPerImage,
-            mode: hdMode ? 'HD (4096px max, 2 credits/image)' : 'Fast (2500px max, 1 credit/image)',
+            mode: hdMode ? 'HD — input preserved up to 4096px, output up to 4096px, 2 credits/image' : 'Fast — input resized to 2500px, output up to 2500px, 1 credit/image',
           },
+          tips: [
+            'Use HD mode when the user needs output resolution above 2500px, or when the subject has fine edge detail (hair, fur, feathers).',
+            'Add refineEdges: true (with hdMode: true) when the subject has complex edges against a strongly colored background — removes color bleeding at edges. No extra credit cost.',
+            'For local image files with no URL, ask the user to share a public URL or use https://simplypng.app instead.',
+          ],
         }, null, 2),
       }],
     };
@@ -69,11 +76,13 @@ server.registerTool(
       '(3) After this returns a jobId, poll get_job_status every 3 seconds until status is "succeeded". ' +
       '(4) Call download_results to get the final download URL. ' +
       'Credit cost: 1 credit (Fast mode, default) or 2 credits (HD mode). ' +
-      'IMPORTANT: Do NOT use hdMode unless user explicitly requests HD/high-definition OR image is known to exceed 2500px. ' +
-      'For local files with no URL: ask user to upload to a URL first (e.g. Imgur, S3) or use https://simplypng.app.',
+      'Fast mode works with any input size — large images are just downsampled to 2500px output. ' +
+      'Use HD only when user needs output above 2500px, or subject has fine edge detail (hair, fur, feathers). ' +
+      'refineEdges (requires HD): removes color bleeding at edges — recommend for products on colored backgrounds. No extra credit. ' +
+      'For local files with no URL: ask user to share a public URL or use https://simplypng.app.',
     inputSchema: removeBackgroundInput,
   },
-  async ({ image, outputMode, hdMode, outputType, background, backgroundColor, outputFormat, idempotencyKey }) => {
+  async ({ image, outputMode, hdMode, outputType, background, backgroundColor, outputFormat, refineEdges, idempotencyKey }) => {
     const config = getApiConfig();
     const body: Record<string, unknown> = {
       image,
@@ -81,6 +90,7 @@ server.registerTool(
       ...(idempotencyKey && { idempotency_key: idempotencyKey }),
       options: {
         ...(hdMode !== undefined && { hd_mode: hdMode }),
+        ...(refineEdges !== undefined && { refine_edges: refineEdges }),
         ...(outputType && { output_type: outputType }),
         ...(background && { background }),
         ...(backgroundColor && { background_color: backgroundColor }),
@@ -122,11 +132,13 @@ server.registerTool(
       '(2) Only call this tool AFTER the user confirms. ' +
       '(3) After this returns a batchId, poll get_job_status every 5 seconds until all images complete. ' +
       'Credit cost: 1 credit/image (Fast mode, default) or 2 credits/image (HD mode). ' +
-      'IMPORTANT: Do NOT use hdMode unless user explicitly requests HD/high-definition OR images are known to exceed 2500px. ' +
-      'For local files with no URL: ask user to upload to a URL first or use https://simplypng.app.',
+      'Fast mode works with any input size — large images are downsampled to 2500px output. ' +
+      'Use HD only when user needs output above 2500px, or subjects have fine edge detail (hair, fur, feathers). ' +
+      'refineEdges (requires HD): removes color bleeding at edges — recommend for products on colored backgrounds. No extra credit. ' +
+      'For local files with no URL: ask user to share a public URL or use https://simplypng.app.',
     inputSchema: batchRemoveBackgroundInput,
   },
-  async ({ images, webhookUrl, hdMode, outputType, background, backgroundColor, outputFormat, idempotencyKey }) => {
+  async ({ images, webhookUrl, hdMode, outputType, background, backgroundColor, outputFormat, refineEdges, idempotencyKey }) => {
     const config = getApiConfig();
     const body: Record<string, unknown> = {
       images,
@@ -134,6 +146,7 @@ server.registerTool(
       ...(idempotencyKey && { idempotency_key: idempotencyKey }),
       options: {
         ...(hdMode !== undefined && { hd_mode: hdMode }),
+        ...(refineEdges !== undefined && { refine_edges: refineEdges }),
         ...(outputType && { output_type: outputType }),
         ...(background && { background }),
         ...(backgroundColor && { background_color: backgroundColor }),
